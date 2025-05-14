@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+
+  nexus-repo:
+    image: sonatype/nexus3
+    container_name: nexus-repository
+    restart: unless-stopped
+    user: root
+    ports:
+      - "8082:8081"
+      - "5000:5000"
+      - "5001:5001"
+      - "5002:5002"
+    volumes:
+      - ./nexus-repo-data:/nexus-data
