@@ -1,0 +1,116 @@
+
+
+sudo apt update && sudo apt -y upgrade
+sudo timedatectl set-timezone Asia/Kolkata 
+
+
+sudo apt install wget gnupg -y
+wget -qO - https://packages.openvpn.net/packages-repo.gpg \
+  | sudo tee /usr/share/keyrings/openvpn-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/openvpn-archive-keyring.gpg] \
+  https://packages.openvpn.net/openvpn2/debian $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/openvpn2.list
+sudo apt update
+
+
+
+sudo apt install openvpn easy-rsa netfilter-persistent iptables-persistent -y
+
+
+
+
+
+make-cadir /etc/openvpn/easy-rsa        # skeleton CA dir
+cd /etc/openvpn/easy-rsa
+
+./easyrsa init-pki
+./easyrsa build-ca nopass               # answer a few CA name questions
+./easyrsa gen-req server nopass
+./easyrsa sign-req server server        # choose “yes” to sign
+
+./easyrsa gen-dh
+openvpn --genkey --secret ta.key        # extra TLS‑Auth key (mitigates UDP flood)
+
+
+
+
+sudo mkdir -p /etc/openvpn/server
+sudo cp pki/{ca.crt,issued/server.crt,private/server.key,dh.pem} ta.key \
+        /etc/openvpn/server/
+
+sudo nano /etc/openvpn/server/server.conf
+
+
+
+##################Content of server.conf##################
+
+port 1194
+proto udp
+dev tun
+user nobody
+group nogroup
+persist-key
+persist-tun
+
+ca      ca.crt
+cert    server.crt
+key     server.key
+dh      dh.pem
+tls-auth ta.key 0
+
+topology subnet
+server 10.8.0.0 255.255.255.0
+
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS 1.1.1.1"
+push "dhcp-option DNS 8.8.8.8"
+
+client-config-dir ccd        
+keepalive 10 120
+cipher AES-256-GCM
+nobind
+log-append /var/log/openvpn.log
+verb 3
+
+
+
+#########################################################
+
+
+
+
+
+echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+
+
+
+
+sudo ufw allow OpenSSH
+sudo ufw allow 1194/udp
+sudo ufw enable
+
+
+sudo bash -c 'printf "*nat\n:POSTROUTING ACCEPT [0:0]\n-A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE\nCOMMIT\n" > /etc/ufw/before.rules'
+sudo ufw reload
+
+
+
+
+
+sudo systemctl enable --now openvpn-server@server
+sudo systemctl status openvpn-server@server
+
+
+
+sudo mkdir -p /etc/openvpn/server/ccd
+# Example static IP for client "alice"
+echo "ifconfig-push 10.8.0.10 255.255.255.0" | sudo tee /etc/openvpn/server/ccd/alice
+
+
+
+
+
+
+
+
